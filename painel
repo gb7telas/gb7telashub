@@ -1,7 +1,7 @@
 --[[
-    Unknown Hub  |  v1.2  |  Universal Roblox Script
-    Features: Aimbot (tecla + botão direito do mouse), FOV Circle, ESP,
-              Extended Hitbox (modo suave), Speed, Noclip
+    Unknown Hub  |  v1.3  |  Universal Roblox Script
+    Features: Aimbot (tecla + botão direito), FOV Circle, ESP,
+              Extended Hitbox (players + NPCs), Speed, Noclip
     Execução: cole no executor (ou autoexec). Interface: K abre/fecha.
 ]]--
 
@@ -38,7 +38,7 @@ local Config = {
     -- Aimbot
     Aimbot        = true,
     AimKey        = Enum.KeyCode.E,
-    AimMouse      = true,   -- botão direito do mouse também mira
+    AimMouse      = true,
     AimToggleMode = false,
     AimPart       = "Head",
     FOV           = 160,
@@ -59,8 +59,9 @@ local Config = {
 
     -- Hitbox
     Hitbox       = false,
-    HitboxSize   = 18,
+    HitboxSize   = 10,
     HitboxLocal  = false,
+    HitboxNPCs   = true,
 
     -- Speed
     Speed       = false,
@@ -165,7 +166,6 @@ local main = create("Frame", {
 corner(main, 12)
 stroke(main, Colors.Stroke, 1)
 
--- linha de destaque no topo
 local topLine = create("Frame", {
     Size = UDim2.new(1, -24, 0, 2),
     Position = UDim2.fromOffset(12, 0),
@@ -177,7 +177,6 @@ local topGrad = Instance.new("UIGradient")
 topGrad.Color = ColorSequence.new(Colors.Accent, Colors.Accent2)
 topGrad.Parent = topLine
 
--- top bar / drag
 local topBar = create("TextButton", {
     Size = UDim2.new(1, 0, 0, 44),
     BackgroundTransparency = 1,
@@ -219,7 +218,7 @@ create("TextLabel", {
     Size = UDim2.fromOffset(160, 12),
     Position = UDim2.fromOffset(46, 24),
     BackgroundTransparency = 1,
-    Text = "v1.2  •  universal",
+    Text = "v1.3  •  universal",
     TextColor3 = Colors.TextDim,
     Font = Enum.Font.GothamMedium,
     TextSize = 10,
@@ -249,7 +248,6 @@ local minBtn = create("TextButton", {
 }, topBar)
 corner(minBtn, 6)
 
--- sidebar
 local sidebar = create("Frame", {
     Size = UDim2.new(0, 132, 1, -44),
     Position = UDim2.fromOffset(0, 44),
@@ -274,7 +272,6 @@ sidePad.PaddingLeft = UDim.new(0, 8)
 sidePad.PaddingRight = UDim.new(0, 8)
 sidePad.Parent = sidebar
 
--- content
 local content = create("Frame", {
     Size = UDim2.new(1, -132, 1, -44),
     Position = UDim2.fromOffset(132, 44),
@@ -817,13 +814,14 @@ do
     createSlider(p, "Distância máxima", 100, 3000, Config.ESPMaxDistance, "m", function(v) Config.ESPMaxDistance = v end, "ESPMaxDistance")
 end
 
--- ---------- ABA 3: MOVIMENTO (hitbox + noclip) ----------
+-- ---------- ABA 3: MOVIMENTO ----------
 do
     local p = pages[3]
     section(p, "EXTENDED HITBOX")
     createToggle(p, "Hitbox expandida", Config.Hitbox, function(v) Config.Hitbox = v end, "Hitbox")
-    createSlider(p, "Tamanho", 4, 12, Config.HitboxSize, "", function(v) Config.HitboxSize = v end, "HitboxSize")
+    createSlider(p, "Tamanho", 4, 18, Config.HitboxSize, "", function(v) Config.HitboxSize = v end, "HitboxSize")
     createToggle(p, "Aplicar em mim", Config.HitboxLocal, function(v) Config.HitboxLocal = v end, "HitboxLocal")
+    createToggle(p, "Incluir NPCs", Config.HitboxNPCs, function(v) Config.HitboxNPCs = v end, "HitboxNPCs")
 
     section(p, "NOCLIP")
     createToggle(p, "Atravessar paredes", Config.Noclip, function(v) Config.Noclip = v end, "Noclip")
@@ -833,7 +831,7 @@ do
         Size = UDim2.new(1, 0, 0, 60),
         BackgroundColor3 = Colors.Surface,
         BackgroundTransparency = 0.3,
-        Text = "Hitbox: modo suave (só tamanho) p/ evitar travamentos.\nEm jogos com validação no servidor (ex: Blox Fruits) ela não aumenta o alcance real.\nNoclip: atravessa paredes; use junto com speed p/ atravessar rápido.",
+        Text = "Hitbox: Size + CanCollide reaplicados todo frame, sem Massless.\nNPCs próximos (raio 500 studs) também recebem hitbox.\nEm jogos com validação no servidor, o ganho é limitado.",
         TextColor3 = Colors.TextDim,
         Font = Enum.Font.GothamMedium,
         TextSize = 11,
@@ -915,6 +913,7 @@ do
         Config.FOV = 160
         Config.Smoothness = 9
         Config.Hitbox = false
+        Config.HitboxNPCs = true
         Config.Noclip = false
         Config.Speed = false
         Config.SpeedValue = 60
@@ -1245,9 +1244,15 @@ local function updateESP()
 end
 
 --=====================================================================
--- EXTENDED HITBOX (modo suave: só tamanho, sem física agressiva)
+-- EXTENDED HITBOX (players + NPCs)
+-- Size + CanCollide reaplicados todo frame, SEM Massless
 --=====================================================================
-local hitboxCache = {}
+local hitboxCache = {}        -- [model] = { part, size, transparency, canCollide }
+local playerCharSet = setmetatable({}, { __mode = "k" }) -- cache rápido de chars de players
+local npcList = {}            -- modelos de NPC válidos encontrados
+local npcScanTimer = 0
+local NPC_SCAN_INTERVAL = 1.0 -- rescan de NPCs a cada 1s
+local NPC_MAX_DISTANCE = 500  -- só aplica em NPCs num raio de 500 studs
 
 local function getRoot(char)
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1265,15 +1270,15 @@ local function applyHitbox(char, size)
             part = hrp,
             size = hrp.Size,
             transparency = hrp.Transparency,
+            canCollide = hrp.CanCollide,
         }
         cached = hitboxCache[char]
     end
 
-    if cached.size.Magnitude >= size * 1.7 then return end
-
+    -- reaplica SEMPRE (a replicação reverte entre frames)
     hrp.Size = Vector3.new(size, size, size)
+    hrp.CanCollide = false
     hrp.Transparency = 1
-    -- NÃO tocar em CanCollide / Massless: é isso que travava os personagens
 end
 
 local function restoreHitbox(char)
@@ -1283,8 +1288,47 @@ local function restoreHitbox(char)
     if p and p.Parent then
         p.Size = c.size
         p.Transparency = c.transparency
+        p.CanCollide = c.canCollide
     end
     hitboxCache[char] = nil
+end
+
+-- procura NPCs: models com Humanoid que não são de players
+local function scanNPCs()
+    local myChar = LP.Character
+    local myPos = myChar and myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
+    local newNPCs = {}
+
+    for _, model in ipairs(Workspace:GetDescendants()) do
+        if model:IsA("Model") and not playerCharSet[model] then
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local hrp = getRoot(model)
+                if hrp then
+                    -- filtra: só NPCs num raio útil, p/ não pesar com o mapa inteiro
+                    local ok = true
+                    if myPos then
+                        local d = (hrp.Position - myPos).Magnitude
+                        if d > NPC_MAX_DISTANCE then ok = false end
+                    end
+                    if ok then
+                        newNPCs[#newNPCs + 1] = model
+                    end
+                end
+            end
+        end
+    end
+
+    npcList = newNPCs
+end
+
+-- mantém mapa char -> é player (p/ diferenciar NPCs no scan)
+local function refreshPlayerChars()
+    local set = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character then set[plr.Character] = true end
+    end
+    playerCharSet = set
 end
 
 --=====================================================================
@@ -1318,14 +1362,19 @@ end)
 --=====================================================================
 -- HITBOX LOOP (Heartbeat, todo frame)
 --=====================================================================
-conns[#conns + 1] = RunService.Heartbeat:Connect(function()
+conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
     if not Config.Hitbox then
         for char in pairs(hitboxCache) do
             restoreHitbox(char)
         end
+        npcList = {}
+        npcScanTimer = 0
         return
     end
 
+    refreshPlayerChars()
+
+    -- players
     for _, plr in ipairs(Players:GetPlayers()) do
         if Config.HitboxLocal or plr ~= LP then
             local alive, char, hum = getChar(plr)
@@ -1335,6 +1384,24 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function()
         end
     end
 
+    -- NPCs (rescan periódico, aplicação todo frame)
+    if Config.HitboxNPCs then
+        npcScanTimer = npcScanTimer + dt
+        if npcScanTimer >= NPC_SCAN_INTERVAL then
+            npcScanTimer = 0
+            pcall(scanNPCs)
+        end
+        for _, npc in ipairs(npcList) do
+            if npc.Parent then
+                local hum = npc:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    pcall(applyHitbox, npc, Config.HitboxSize)
+                end
+            end
+        end
+    end
+
+    -- limpa caches de modelos removidos
     for char in pairs(hitboxCache) do
         if not char.Parent then
             hitboxCache[char] = nil
@@ -1522,9 +1589,9 @@ end
 --=====================================================================
 task.spawn(function()
     task.wait(0.3)
-    notify("Unknown Hub v1.2 carregado")
+    notify("Unknown Hub v1.3 carregado")
     task.wait(0.15)
     notify("K abre/fecha o menu")
     task.wait(0.15)
-    notify("Botão direito do mouse mira")
+    notify("Hitbox inclui NPCs (toggle na aba Movimento)")
 end)
