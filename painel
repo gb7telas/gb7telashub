@@ -1,7 +1,7 @@
 --[[
     Unknown Hub  |  v1.3  |  Universal Roblox Script
     Features: Aimbot (tecla + botão direito), FOV Circle, ESP,
-              Extended Hitbox (players + NPCs), Speed, Noclip
+              Extended Hitbox (players + NPCs) com cubo visual, Speed, Noclip
     Execução: cole no executor (ou autoexec). Interface: K abre/fecha.
 ]]--
 
@@ -62,6 +62,7 @@ local Config = {
     HitboxSize   = 10,
     HitboxLocal  = false,
     HitboxNPCs   = true,
+    HitboxVisual = true,
 
     -- Speed
     Speed       = false,
@@ -822,6 +823,7 @@ do
     createSlider(p, "Tamanho", 4, 18, Config.HitboxSize, "", function(v) Config.HitboxSize = v end, "HitboxSize")
     createToggle(p, "Aplicar em mim", Config.HitboxLocal, function(v) Config.HitboxLocal = v end, "HitboxLocal")
     createToggle(p, "Incluir NPCs", Config.HitboxNPCs, function(v) Config.HitboxNPCs = v end, "HitboxNPCs")
+    createToggle(p, "Mostrar cubo (visual)", Config.HitboxVisual, function(v) Config.HitboxVisual = v end, "HitboxVisual")
 
     section(p, "NOCLIP")
     createToggle(p, "Atravessar paredes", Config.Noclip, function(v) Config.Noclip = v end, "Noclip")
@@ -831,7 +833,7 @@ do
         Size = UDim2.new(1, 0, 0, 60),
         BackgroundColor3 = Colors.Surface,
         BackgroundTransparency = 0.3,
-        Text = "Hitbox: Size + CanCollide reaplicados todo frame, sem Massless.\nNPCs próximos (raio 500 studs) também recebem hitbox.\nEm jogos com validação no servidor, o ganho é limitado.",
+        Text = "Hitbox: Size + CanCollide reaplicados todo frame, sem Massless.\nNPCs próximos (raio 500 studs) também recebem hitbox.\nO cubo neon é só visual — o hit real é o HRP expandido (invisível).",
         TextColor3 = Colors.TextDim,
         Font = Enum.Font.GothamMedium,
         TextSize = 11,
@@ -914,6 +916,7 @@ do
         Config.Smoothness = 9
         Config.Hitbox = false
         Config.HitboxNPCs = true
+        Config.HitboxVisual = true
         Config.Noclip = false
         Config.Speed = false
         Config.SpeedValue = 60
@@ -1244,20 +1247,51 @@ local function updateESP()
 end
 
 --=====================================================================
--- EXTENDED HITBOX (players + NPCs)
+-- EXTENDED HITBOX (players + NPCs) + CUBO VISUAL
 -- Size + CanCollide reaplicados todo frame, SEM Massless
 --=====================================================================
-local hitboxCache = {}        -- [model] = { part, size, transparency, canCollide }
-local playerCharSet = setmetatable({}, { __mode = "k" }) -- cache rápido de chars de players
-local npcList = {}            -- modelos de NPC válidos encontrados
+local hitboxCache = {}
+local visualCache = {}         -- [model] = cubo visual
+local playerCharSet = setmetatable({}, { __mode = "k" })
+local npcList = {}
 local npcScanTimer = 0
-local NPC_SCAN_INTERVAL = 1.0 -- rescan de NPCs a cada 1s
-local NPC_MAX_DISTANCE = 500  -- só aplica em NPCs num raio de 500 studs
+local NPC_SCAN_INTERVAL = 1.0
+local NPC_MAX_DISTANCE = 500
+
+local HITBOX_COLOR = Color3.fromRGB(122, 92, 255)
 
 local function getRoot(char)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum and hum.RootPart then return hum.RootPart end
     return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+end
+
+-- cubo visual (part local, só no seu client)
+local function getVisual(model, hrp)
+    local v = visualCache[model]
+    if not v or v.Parent == nil then
+        v = Instance.new("Part")
+        v.Name = "UH_HitboxVisual"
+        v.Anchored = true
+        v.CanCollide = false
+        v.CanQuery = false
+        v.CanTouch = false
+        v.CastShadow = false
+        v.Material = Enum.Material.Neon
+        v.Color = HITBOX_COLOR
+        v.Transparency = 0.6
+        v.Parent = Workspace
+        visualCache[model] = v
+    end
+    return v
+end
+
+local function hideVisual(model)
+    local v = visualCache[model]
+    if v then
+        pcall(function() v:Destroy() end)
+        visualCache[model] = nil
+    end
 end
 
 local function applyHitbox(char, size)
@@ -1275,10 +1309,17 @@ local function applyHitbox(char, size)
         cached = hitboxCache[char]
     end
 
-    -- reaplica SEMPRE (a replicação reverte entre frames)
+    -- hit real: expande o HRP (invisível)
     hrp.Size = Vector3.new(size, size, size)
     hrp.CanCollide = false
     hrp.Transparency = 1
+
+    -- visual: cubo neon centralizado no alvo
+    if Config.HitboxVisual then
+        local v = getVisual(char, hrp)
+        v.Size = Vector3.new(size, size, size)
+        v.CFrame = hrp.CFrame
+    end
 end
 
 local function restoreHitbox(char)
@@ -1291,6 +1332,7 @@ local function restoreHitbox(char)
         p.CanCollide = c.canCollide
     end
     hitboxCache[char] = nil
+    hideVisual(char)
 end
 
 -- procura NPCs: models com Humanoid que não são de players
@@ -1305,7 +1347,6 @@ local function scanNPCs()
             if hum and hum.Health > 0 then
                 local hrp = getRoot(model)
                 if hrp then
-                    -- filtra: só NPCs num raio útil, p/ não pesar com o mapa inteiro
                     local ok = true
                     if myPos then
                         local d = (hrp.Position - myPos).Magnitude
@@ -1367,6 +1408,9 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
         for char in pairs(hitboxCache) do
             restoreHitbox(char)
         end
+        for model in pairs(visualCache) do
+            hideVisual(model)
+        end
         npcList = {}
         npcScanTimer = 0
         return
@@ -1405,6 +1449,14 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
     for char in pairs(hitboxCache) do
         if not char.Parent then
             hitboxCache[char] = nil
+            hideVisual(char)
+        end
+    end
+
+    -- remove cubos de modelos que sumiram
+    for model in pairs(visualCache) do
+        if not hitboxCache[model] then
+            hideVisual(model)
         end
     end
 end)
@@ -1561,6 +1613,11 @@ getgenv().UnknownHub_Cleanup = function()
     end
     hlCache = {}
 
+    for model in pairs(visualCache) do
+        pcall(hideVisual, model)
+    end
+    visualCache = {}
+
     for char in pairs(hitboxCache) do
         pcall(restoreHitbox, char)
     end
@@ -1593,5 +1650,5 @@ task.spawn(function()
     task.wait(0.15)
     notify("K abre/fecha o menu")
     task.wait(0.15)
-    notify("Hitbox inclui NPCs (toggle na aba Movimento)")
+    notify("Hitbox com cubo visual ativa")
 end)
