@@ -1,9 +1,8 @@
 --[[
-    Unknown Hub  |  v1.4  |  Universal Roblox Script (Blox Fruits ready)
-    Features: Aimbot (tecla + botão direito), FOV Circle, ESP,
-              Extended Hitbox (players + NPCs) com cubo visual,
-              Fast Attack (estilos/espadas/frutas), Speed, Noclip
-    Execução: cole no executor (ou autoexec). Interface: K abre/fecha.
+    Unknown Hub  |  v1.5  |  Blox Fruits ready
+    Features: Aimbot, ESP, Extended Hitbox otimizada (até 100, players+NPCs,
+              cubo visual), Fast Attack, Speed, Noclip, Cores customizáveis
+    Execução: cole no executor. Interface: K abre/fecha.
 ]]--
 
 local Players      = game:GetService("Players")
@@ -16,7 +15,6 @@ local HttpService  = game:GetService("HttpService")
 local LP     = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- limpeza de execução anterior
 if type(getgenv().UnknownHub_Cleanup) == "function" then
     pcall(getgenv().UnknownHub_Cleanup)
 end
@@ -24,11 +22,8 @@ getgenv().UnknownHub_Alive = true
 
 local conns = {}
 local State = {
-    listeningKey = false,
-    keyDown = false,
-    aimToggled = false,
-    speedKeyDown = false,
-    mouseDown = false,
+    listeningKey = false, keyDown = false, aimToggled = false,
+    speedKeyDown = false, mouseDown = false,
 }
 local Refs = {}
 
@@ -37,55 +32,56 @@ local Refs = {}
 --=====================================================================
 local Config = {
     -- Aimbot
-    Aimbot        = true,
-    AimKey        = Enum.KeyCode.E,
-    AimMouse      = true,
-    AimToggleMode = false,
-    AimPart       = "Head",
-    FOV           = 160,
-    Smoothness    = 9,
-    Prediction    = 0.12,
-    TeamCheck     = true,
-    VisibleCheck  = true,
-    ShowFOV       = true,
+    Aimbot = true, AimKey = Enum.KeyCode.E, AimMouse = true,
+    AimToggleMode = false, AimPart = "Head", FOV = 160,
+    Smoothness = 9, Prediction = 0.12,
+    TeamCheck = true, VisibleCheck = true, ShowFOV = true,
 
     -- ESP
-    ESP            = true,
-    ESPBox         = true,
-    ESPName        = true,
-    ESPDistance    = true,
-    ESPHealth      = true,
-    ESPChams       = true,
-    ESPMaxDistance = 1500,
+    ESP = true, ESPBox = true, ESPName = true, ESPDistance = true,
+    ESPHealth = true, ESPChams = true, ESPMaxDistance = 1500,
 
     -- Hitbox
-    Hitbox       = false,
-    HitboxSize   = 10,
-    HitboxLocal  = false,
-    HitboxNPCs   = true,
-    HitboxVisual = true,
+    Hitbox = false, HitboxSize = 25, HitboxLocal = false,
+    HitboxNPCs = true, HitboxVisual = true, HitboxMaxDistance = 250,
 
-    -- Combat (Blox Fruits)
-    FastAttack    = false,
-    FastCooldown  = 0,
-    CombatHitbox  = 0,
+    -- Combat
+    FastAttack = false, FastCooldown = 0, CombatHitbox = 0,
 
     -- Speed
-    Speed       = false,
-    SpeedValue  = 60,
-    SpeedHold   = false,
-    SpeedKey    = Enum.KeyCode.LeftAlt,
+    Speed = false, SpeedValue = 60, SpeedHold = false,
+    SpeedKey = Enum.KeyCode.LeftAlt,
 
     -- Noclip
     Noclip = false,
+
+    -- Cores
+    PanelColor    = "Roxo",
+    HitboxColor   = "Roxo",
+    ESPEnemyColor = "Vermelho",
+    ESPAllyColor  = "Ciano",
 
     -- Interface
     UIToggleKey = Enum.KeyCode.K,
 }
 
 --=====================================================================
--- PALETA
+-- CORES / TEMAS
 --=====================================================================
+local Presets = {
+    ["Roxo"]     = Color3.fromRGB(122, 92, 255),
+    ["Azul"]     = Color3.fromRGB(0, 150, 255),
+    ["Ciano"]    = Color3.fromRGB(0, 220, 255),
+    ["Verde"]    = Color3.fromRGB(0, 200, 120),
+    ["Lima"]     = Color3.fromRGB(160, 255, 60),
+    ["Vermelho"] = Color3.fromRGB(255, 80, 100),
+    ["Rosa"]     = Color3.fromRGB(255, 90, 200),
+    ["Laranja"]  = Color3.fromRGB(255, 150, 40),
+    ["Amarelo"]  = Color3.fromRGB(255, 220, 70),
+    ["Branco"]   = Color3.fromRGB(240, 242, 250),
+}
+local PresetNames = { "Roxo", "Azul", "Ciano", "Verde", "Lima", "Vermelho", "Rosa", "Laranja", "Amarelo", "Branco" }
+
 local Colors = {
     Background = Color3.fromRGB(16, 17, 23),
     Surface    = Color3.fromRGB(24, 25, 34),
@@ -93,11 +89,33 @@ local Colors = {
     Stroke     = Color3.fromRGB(46, 49, 64),
     Text       = Color3.fromRGB(236, 238, 246),
     TextDim    = Color3.fromRGB(132, 137, 156),
-    Accent     = Color3.fromRGB(122, 92, 255),
-    Accent2    = Color3.fromRGB(0, 190, 255),
-    Green      = Color3.fromRGB(70, 220, 140),
-    Red        = Color3.fromRGB(255, 80, 100),
 }
+
+local function accent()    return Presets[Config.PanelColor] or Presets["Roxo"] end
+local function accent2()   return accent():Lerp(Color3.new(1, 1, 1), 0.45) end
+local function hbColor()   return Presets[Config.HitboxColor] or Presets["Roxo"] end
+local function espEnemy()  return Presets[Config.ESPEnemyColor] or Presets["Vermelho"] end
+local function espAlly()   return Presets[Config.ESPAllyColor] or Presets["Ciano"] end
+
+-- bindings de tema (re-aplicados quando troca a cor do painel)
+local theme = { grads = {}, bgs = {}, strokes = {}, misc = {} }
+local function onTheme(fn) theme.misc[#theme.misc + 1] = fn end
+
+local function applyTheme()
+    local a, a2 = accent(), accent2()
+    for _, g in ipairs(theme.grads) do
+        pcall(function() g.Color = ColorSequence.new(a, a2) end)
+    end
+    for _, f in ipairs(theme.bgs) do
+        if f and f.Parent then f.BackgroundColor3 = a end
+    end
+    for _, s in ipairs(theme.strokes) do
+        if s and s.Parent then s.Color = a end
+    end
+    for _, fn in ipairs(theme.misc) do
+        pcall(fn)
+    end
+end
 
 --=====================================================================
 -- HELPERS
@@ -151,122 +169,90 @@ local function isEnemy(plr)
 end
 
 --=====================================================================
--- INTERFACE
+-- INTERFACE BASE
 --=====================================================================
 local uiParent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
 
 local gui = create("ScreenGui", {
-    Name = "UnknownHub_UI",
-    ResetOnSpawn = false,
-    IgnoreGuiInset = true,
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-    DisplayOrder = 9999,
+    Name = "UnknownHub_UI", ResetOnSpawn = false, IgnoreGuiInset = true,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 9999,
 }, uiParent)
 
 local main = create("Frame", {
-    Name = "Main",
-    Size = UDim2.fromOffset(520, 380),
-    Position = UDim2.new(0.5, -260, 0.5, -190),
-    BackgroundColor3 = Colors.Background,
-    BorderSizePixel = 0,
+    Size = UDim2.fromOffset(520, 390),
+    Position = UDim2.new(0.5, -260, 0.5, -195),
+    BackgroundColor3 = Colors.Background, BorderSizePixel = 0,
 }, gui)
 corner(main, 12)
 stroke(main, Colors.Stroke, 1)
 
 local topLine = create("Frame", {
-    Size = UDim2.new(1, -24, 0, 2),
-    Position = UDim2.fromOffset(12, 0),
-    BackgroundColor3 = Colors.Accent,
-    BorderSizePixel = 0,
+    Size = UDim2.new(1, -24, 0, 2), Position = UDim2.fromOffset(12, 0),
+    BackgroundColor3 = accent(), BorderSizePixel = 0,
 }, main)
 corner(topLine, 1)
 local topGrad = Instance.new("UIGradient")
-topGrad.Color = ColorSequence.new(Colors.Accent, Colors.Accent2)
+topGrad.Color = ColorSequence.new(accent(), accent2())
 topGrad.Parent = topLine
+theme.grads[#theme.grads + 1] = topGrad
+theme.bgs[#theme.bgs + 1] = topLine
 
 local topBar = create("TextButton", {
-    Size = UDim2.new(1, 0, 0, 44),
-    BackgroundTransparency = 1,
-    Text = "",
-    AutoButtonColor = false,
+    Size = UDim2.new(1, 0, 0, 44), BackgroundTransparency = 1,
+    Text = "", AutoButtonColor = false,
 }, main)
 
 local logo = create("Frame", {
-    Size = UDim2.fromOffset(24, 24),
-    Position = UDim2.fromOffset(14, 10),
-    BackgroundColor3 = Colors.Accent,
-    BorderSizePixel = 0,
+    Size = UDim2.fromOffset(24, 24), Position = UDim2.fromOffset(14, 10),
+    BackgroundColor3 = accent(), BorderSizePixel = 0,
 }, topBar)
 corner(logo, 7)
 local logoGrad = Instance.new("UIGradient")
-logoGrad.Color = ColorSequence.new(Colors.Accent, Colors.Accent2)
+logoGrad.Color = ColorSequence.new(accent(), accent2())
 logoGrad.Rotation = 45
 logoGrad.Parent = logo
+theme.grads[#theme.grads + 1] = logoGrad
+theme.bgs[#theme.bgs + 1] = logo
+
 create("TextLabel", {
-    Size = UDim2.fromScale(1, 1),
-    BackgroundTransparency = 1,
-    Text = "U",
-    TextColor3 = Color3.new(1, 1, 1),
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
+    Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+    Text = "U", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 14,
 }, logo)
 
 create("TextLabel", {
-    Size = UDim2.fromOffset(160, 16),
-    Position = UDim2.fromOffset(46, 8),
-    BackgroundTransparency = 1,
-    Text = "Unknown Hub",
-    TextColor3 = Colors.Text,
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
+    Size = UDim2.fromOffset(180, 16), Position = UDim2.fromOffset(46, 8),
+    BackgroundTransparency = 1, Text = "Unknown Hub",
+    TextColor3 = Colors.Text, Font = Enum.Font.GothamBold, TextSize = 14,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, topBar)
 create("TextLabel", {
-    Size = UDim2.fromOffset(160, 12),
-    Position = UDim2.fromOffset(46, 24),
-    BackgroundTransparency = 1,
-    Text = "v1.4  •  Blox Fruits ready",
-    TextColor3 = Colors.TextDim,
-    Font = Enum.Font.GothamMedium,
-    TextSize = 10,
+    Size = UDim2.fromOffset(180, 12), Position = UDim2.fromOffset(46, 24),
+    BackgroundTransparency = 1, Text = "v1.5  •  Blox Fruits ready",
+    TextColor3 = Colors.TextDim, Font = Enum.Font.GothamMedium, TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, topBar)
 
 local closeBtn = create("TextButton", {
-    Size = UDim2.fromOffset(24, 24),
-    Position = UDim2.new(1, -34, 0, 10),
-    BackgroundColor3 = Colors.Surface2,
-    Text = "×",
-    TextColor3 = Colors.TextDim,
-    Font = Enum.Font.GothamBold,
-    TextSize = 16,
-    AutoButtonColor = false,
+    Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, -34, 0, 10),
+    BackgroundColor3 = Colors.Surface2, Text = "×", TextColor3 = Colors.TextDim,
+    Font = Enum.Font.GothamBold, TextSize = 16, AutoButtonColor = false,
 }, topBar)
 corner(closeBtn, 6)
 local minBtn = create("TextButton", {
-    Size = UDim2.fromOffset(24, 24),
-    Position = UDim2.new(1, -62, 0, 10),
-    BackgroundColor3 = Colors.Surface2,
-    Text = "–",
-    TextColor3 = Colors.TextDim,
-    Font = Enum.Font.GothamBold,
-    TextSize = 14,
-    AutoButtonColor = false,
+    Size = UDim2.fromOffset(24, 24), Position = UDim2.new(1, -62, 0, 10),
+    BackgroundColor3 = Colors.Surface2, Text = "–", TextColor3 = Colors.TextDim,
+    Font = Enum.Font.GothamBold, TextSize = 14, AutoButtonColor = false,
 }, topBar)
 corner(minBtn, 6)
 
 local sidebar = create("Frame", {
-    Size = UDim2.new(0, 132, 1, -44),
-    Position = UDim2.fromOffset(0, 44),
-    BackgroundColor3 = Colors.Surface,
-    BackgroundTransparency = 0.5,
-    BorderSizePixel = 0,
+    Size = UDim2.new(0, 132, 1, -44), Position = UDim2.fromOffset(0, 44),
+    BackgroundColor3 = Colors.Surface, BackgroundTransparency = 0.5, BorderSizePixel = 0,
 }, main)
 create("Frame", {
-    Size = UDim2.new(1, 0, 0, 1),
-    Position = UDim2.new(0, 0, 1, 0),
-    BackgroundColor3 = Colors.Stroke,
-    BorderSizePixel = 0,
+    Size = UDim2.new(1, 0, 0, 1), Position = UDim2.new(0, 0, 1, 0),
+    BackgroundColor3 = Colors.Stroke, BorderSizePixel = 0,
 }, sidebar)
 
 local sideList = Instance.new("UIListLayout")
@@ -280,8 +266,7 @@ sidePad.PaddingRight = UDim.new(0, 8)
 sidePad.Parent = sidebar
 
 local content = create("Frame", {
-    Size = UDim2.new(1, -132, 1, -44),
-    Position = UDim2.fromOffset(132, 44),
+    Size = UDim2.new(1, -132, 1, -44), Position = UDim2.fromOffset(132, 44),
     BackgroundTransparency = 1,
 }, main)
 
@@ -290,16 +275,12 @@ local content = create("Frame", {
 --=====================================================================
 local function newPage()
     local page = create("ScrollingFrame", {
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ScrollBarThickness = 3,
-        ScrollBarImageColor3 = Colors.Accent,
-        CanvasSize = UDim2.new(),
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, BorderSizePixel = 0,
+        ScrollBarThickness = 3, CanvasSize = UDim2.new(),
         AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollingDirection = Enum.ScrollingDirection.Y,
-        Visible = false,
+        ScrollingDirection = Enum.ScrollingDirection.Y, Visible = false,
     }, content)
+    onTheme(function() page.ScrollBarImageColor3 = accent() end)
     local l = Instance.new("UIListLayout")
     l.Padding = UDim.new(0, 6)
     l.SortOrder = Enum.SortOrder.LayoutOrder
@@ -315,56 +296,39 @@ end
 
 local function section(parent, text)
     create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 22),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.TextDim,
-        Font = Enum.Font.GothamBold,
-        TextSize = 10,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
+        Text = text, TextColor3 = Colors.TextDim, Font = Enum.Font.GothamBold,
+        TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
     }, parent)
 end
 
 local function createToggle(parent, text, default, changed, key)
     local row = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = Colors.Surface,
-        AutoButtonColor = false,
-        Text = "",
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Colors.Surface,
+        AutoButtonColor = false, Text = "", BorderSizePixel = 0,
     }, parent)
     corner(row, 8)
-
     create("TextLabel", {
-        Size = UDim2.new(1, -70, 1, 0),
-        Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        Size = UDim2.new(1, -70, 1, 0), Position = UDim2.fromOffset(12, 0),
+        BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, row)
-
     local track = create("Frame", {
-        Size = UDim2.fromOffset(36, 18),
-        Position = UDim2.new(1, -46, 0.5, -9),
-        BackgroundColor3 = Colors.Surface2,
-        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(36, 18), Position = UDim2.new(1, -46, 0.5, -9),
+        BackgroundColor3 = Colors.Surface2, BorderSizePixel = 0,
     }, row)
     corner(track, 9)
     local knob = create("Frame", {
-        Size = UDim2.fromOffset(14, 14),
-        Position = UDim2.new(0, 2, 0.5, -7),
-        BackgroundColor3 = Colors.Text,
-        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(14, 14), Position = UDim2.new(0, 2, 0.5, -7),
+        BackgroundColor3 = Colors.Text, BorderSizePixel = 0,
     }, track)
     corner(knob, 7)
 
     local state = default and true or false
     local function render(anim)
         local kp = state and UDim2.new(1, -16, 0.5, -7) or UDim2.new(0, 2, 0.5, -7)
-        local tc = state and Colors.Accent or Colors.Surface2
+        local tc = state and accent() or Colors.Surface2
         if anim then
             tween(knob, { Position = kp }, 0.15)
             tween(track, { BackgroundColor3 = tc }, 0.15)
@@ -381,9 +345,11 @@ local function createToggle(parent, text, default, changed, key)
         if fire ~= false and changed then changed(state) end
     end
     function api.Get() return state end
+    function api.Refresh() render(false) end
 
     render(false)
     if key then Refs[key] = api end
+    onTheme(function() render(false) end)
 
     row.MouseButton1Click:Connect(function() api.Set(not state, true) end)
     row.MouseEnter:Connect(function() tween(row, { BackgroundColor3 = Colors.Surface2 }, 0.15) end)
@@ -393,65 +359,48 @@ end
 
 local function createSlider(parent, text, min, max, default, suffix, changed, key)
     local row = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 44),
-        BackgroundColor3 = Colors.Surface,
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = Colors.Surface, BorderSizePixel = 0,
     }, parent)
     corner(row, 8)
-
     create("TextLabel", {
-        Size = UDim2.new(1, -100, 0, 18),
-        Position = UDim2.fromOffset(12, 6),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        Size = UDim2.new(1, -100, 0, 18), Position = UDim2.fromOffset(12, 6),
+        BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, row)
     local valueLabel = create("TextLabel", {
-        Size = UDim2.fromOffset(76, 18),
-        Position = UDim2.new(1, -88, 0, 6),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = Colors.Accent,
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        Size = UDim2.fromOffset(76, 18), Position = UDim2.new(1, -88, 0, 6),
+        BackgroundTransparency = 1, Text = "", TextColor3 = accent(),
+        Font = Enum.Font.GothamBold, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Right,
     }, row)
+    onTheme(function() valueLabel.TextColor3 = accent() end)
 
     local track = create("Frame", {
-        Size = UDim2.new(1, -24, 0, 4),
-        Position = UDim2.new(0, 12, 0, 30),
-        BackgroundColor3 = Colors.Surface2,
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, -24, 0, 4), Position = UDim2.new(0, 12, 0, 30),
+        BackgroundColor3 = Colors.Surface2, BorderSizePixel = 0,
     }, row)
     corner(track, 2)
 
     local fill = create("Frame", {
-        Size = UDim2.new(0, 0, 1, 0),
-        BackgroundColor3 = Colors.Accent,
-        BorderSizePixel = 0,
+        Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = accent(), BorderSizePixel = 0,
     }, track)
     corner(fill, 2)
     local fg = Instance.new("UIGradient")
-    fg.Color = ColorSequence.new(Colors.Accent, Colors.Accent2)
+    fg.Color = ColorSequence.new(accent(), accent2())
     fg.Parent = fill
+    theme.grads[#theme.grads + 1] = fg
+    theme.bgs[#theme.bgs + 1] = fill
 
     local knob = create("Frame", {
-        Size = UDim2.fromOffset(12, 12),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0, 0, 0.5, 0),
-        BackgroundColor3 = Colors.Text,
-        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(12, 12), AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0, 0, 0.5, 0), BackgroundColor3 = Colors.Text, BorderSizePixel = 0,
     }, track)
     corner(knob, 6)
 
     local hit = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 20),
-        Position = UDim2.new(0, 0, 0.5, -10),
-        BackgroundTransparency = 1,
-        Text = "",
+        Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0, 0, 0.5, -10),
+        BackgroundTransparency = 1, Text = "",
     }, track)
 
     local value = default
@@ -496,46 +445,29 @@ local function createSlider(parent, text, min, max, default, suffix, changed, ke
     return api
 end
 
-local openPopup = nil
+local openPopups = {}
 local function createDropdown(parent, text, options, default, changed, key)
     local row = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = Colors.Surface,
-        AutoButtonColor = false,
-        Text = "",
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Colors.Surface,
+        AutoButtonColor = false, Text = "", BorderSizePixel = 0,
     }, parent)
     corner(row, 8)
-
     create("TextLabel", {
-        Size = UDim2.new(1, -150, 1, 0),
-        Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        Size = UDim2.new(1, -150, 1, 0), Position = UDim2.fromOffset(12, 0),
+        BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, row)
-
     local btn = create("TextButton", {
-        Size = UDim2.fromOffset(130, 24),
-        Position = UDim2.new(1, -140, 0.5, -12),
-        BackgroundColor3 = Colors.Surface2,
-        Text = default,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 12,
-        AutoButtonColor = false,
+        Size = UDim2.fromOffset(130, 24), Position = UDim2.new(1, -140, 0.5, -12),
+        BackgroundColor3 = Colors.Surface2, Text = default, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 12, AutoButtonColor = false,
     }, row)
     corner(btn, 6)
 
     local popup = create("Frame", {
-        Size = UDim2.fromOffset(130, #options * 26 + 8),
-        BackgroundColor3 = Colors.Surface,
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 20,
+        Size = UDim2.fromOffset(130, #options * 26 + 8), BackgroundColor3 = Colors.Surface,
+        BorderSizePixel = 0, Visible = false, ZIndex = 20,
     }, gui)
     corner(popup, 8)
     stroke(popup, Colors.Stroke)
@@ -547,90 +479,74 @@ local function createDropdown(parent, text, options, default, changed, key)
     pp.PaddingLeft = UDim.new(0, 4)
     pp.PaddingRight = UDim.new(0, 4)
     pp.Parent = popup
+    openPopups[#openPopups + 1] = popup
 
-    local current = default
     local api = {}
-
-    local function closePopup()
+    local function close()
         popup.Visible = false
-        if openPopup == popup then openPopup = nil end
     end
 
     for _, opt in ipairs(options) do
         local ob = create("TextButton", {
-            Size = UDim2.new(1, 0, 0, 24),
-            BackgroundColor3 = Colors.Surface,
-            Text = opt,
-            TextColor3 = Colors.Text,
-            Font = Enum.Font.GothamMedium,
-            TextSize = 12,
-            AutoButtonColor = false,
+            Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Colors.Surface,
+            Text = opt, TextColor3 = Colors.Text, Font = Enum.Font.GothamMedium,
+            TextSize = 12, AutoButtonColor = false,
         }, popup)
         corner(ob, 5)
+        -- bolinha de cor nos presets
+        if Presets[opt] then
+            local dot = create("Frame", {
+                Size = UDim2.fromOffset(10, 10), Position = UDim2.new(0, 6, 0.5, -5),
+                BackgroundColor3 = Presets[opt], BorderSizePixel = 0,
+            }, ob)
+            corner(dot, 5)
+            ob.TextXAlignment = Enum.TextXAlignment.Right
+            ob.Text = opt .. "  "
+        end
         ob.MouseEnter:Connect(function() tween(ob, { BackgroundColor3 = Colors.Surface2 }, 0.12) end)
         ob.MouseLeave:Connect(function() tween(ob, { BackgroundColor3 = Colors.Surface }, 0.12) end)
         ob.MouseButton1Click:Connect(function()
-            current = opt
             btn.Text = opt
-            closePopup()
+            close()
             if changed then changed(opt) end
         end)
     end
 
     btn.MouseButton1Click:Connect(function()
         if popup.Visible then
-            closePopup()
+            close()
         else
-            if openPopup and openPopup ~= popup then openPopup.Visible = false end
+            for _, p in ipairs(openPopups) do p.Visible = false end
             popup.Position = UDim2.fromOffset(btn.AbsolutePosition.X, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y + 4)
             popup.Visible = true
-            openPopup = popup
         end
     end)
 
     function api.Set(v, fire)
-        current = v
         btn.Text = v
         if fire ~= false and changed then changed(v) end
     end
-    function api.Get() return current end
+    function api.Get() return btn.Text end
     if key then Refs[key] = api end
-
-    row.MouseEnter:Connect(function() tween(row, { BackgroundColor3 = Colors.Surface2 }, 0.15) end)
-    row.MouseLeave:Connect(function() tween(row, { BackgroundColor3 = Colors.Surface }, 0.15) end)
     return api
 end
 
 local function createKeybind(parent, text, defaultKey, changed, key)
     local row = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = Colors.Surface,
-        AutoButtonColor = false,
-        Text = "",
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Colors.Surface,
+        AutoButtonColor = false, Text = "", BorderSizePixel = 0,
     }, parent)
     corner(row, 8)
-
     create("TextLabel", {
-        Size = UDim2.new(1, -110, 1, 0),
-        Position = UDim2.fromOffset(12, 0),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        Size = UDim2.new(1, -110, 1, 0), Position = UDim2.fromOffset(12, 0),
+        BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, row)
-
     local btn = create("TextButton", {
-        Size = UDim2.fromOffset(90, 24),
-        Position = UDim2.new(1, -100, 0.5, -12),
-        BackgroundColor3 = Colors.Surface2,
-        Text = defaultKey.Name,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 12,
-        AutoButtonColor = false,
+        Size = UDim2.fromOffset(90, 24), Position = UDim2.new(1, -100, 0.5, -12),
+        BackgroundColor3 = Colors.Surface2, Text = defaultKey.Name, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamBold, TextSize = 12, AutoButtonColor = false,
     }, row)
     corner(btn, 6)
 
@@ -642,7 +558,7 @@ local function createKeybind(parent, text, defaultKey, changed, key)
         listening = true
         State.listeningKey = true
         btn.Text = "..."
-        btn.TextColor3 = Colors.Accent
+        btn.TextColor3 = accent()
     end)
 
     conns[#conns + 1] = UIS.InputBegan:Connect(function(input)
@@ -663,22 +579,14 @@ local function createKeybind(parent, text, defaultKey, changed, key)
     end
     function api.Get() return current end
     if key then Refs[key] = api end
-
-    row.MouseEnter:Connect(function() tween(row, { BackgroundColor3 = Colors.Surface2 }, 0.15) end)
-    row.MouseLeave:Connect(function() tween(row, { BackgroundColor3 = Colors.Surface }, 0.15) end)
     return api
 end
 
 local function createButton(parent, text, callback)
     local btn = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 34),
-        BackgroundColor3 = Colors.Surface,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
-        AutoButtonColor = false,
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Colors.Surface,
+        Text = text, TextColor3 = Colors.Text, Font = Enum.Font.GothamMedium,
+        TextSize = 13, AutoButtonColor = false, BorderSizePixel = 0,
     }, parent)
     corner(btn, 8)
     btn.MouseButton1Click:Connect(callback)
@@ -687,10 +595,8 @@ local function createButton(parent, text, callback)
     return btn
 end
 
--- notificações
 local notifHolder = create("Frame", {
-    Size = UDim2.fromOffset(230, 260),
-    Position = UDim2.new(1, -250, 1, -280),
+    Size = UDim2.fromOffset(230, 260), Position = UDim2.new(1, -250, 1, -280),
     BackgroundTransparency = 1,
 }, gui)
 local nl = Instance.new("UIListLayout")
@@ -701,27 +607,21 @@ nl.Parent = notifHolder
 
 local function notify(text)
     local f = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 30),
-        BackgroundColor3 = Colors.Surface,
-        BackgroundTransparency = 0.05,
-        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Colors.Surface,
+        BackgroundTransparency = 0.05, BorderSizePixel = 0,
     }, notifHolder)
     corner(f, 7)
-    stroke(f, Colors.Accent, 1)
-    create("Frame", {
-        Size = UDim2.fromOffset(3, 18),
-        Position = UDim2.new(0, 8, 0.5, -9),
-        BackgroundColor3 = Colors.Accent,
-        BorderSizePixel = 0,
+    local s = stroke(f, accent(), 1)
+    theme.strokes[#theme.strokes + 1] = s
+    local bar = create("Frame", {
+        Size = UDim2.fromOffset(3, 18), Position = UDim2.new(0, 8, 0.5, -9),
+        BackgroundColor3 = accent(), BorderSizePixel = 0,
     }, f)
+    theme.bgs[#theme.bgs + 1] = bar
     local lbl = create("TextLabel", {
-        Size = UDim2.new(1, -26, 1, 0),
-        Position = UDim2.fromOffset(18, 0),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Colors.Text,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 12,
+        Size = UDim2.new(1, -26, 1, 0), Position = UDim2.fromOffset(18, 0),
+        BackgroundTransparency = 1, Text = text, TextColor3 = Colors.Text,
+        Font = Enum.Font.GothamMedium, TextSize = 12,
         TextXAlignment = Enum.TextXAlignment.Left,
     }, f)
     task.delay(3.2, function()
@@ -733,38 +633,25 @@ local function notify(text)
 end
 
 --=====================================================================
--- MONTAGEM DAS ABAS
+-- ABAS
 --=====================================================================
 local tabs, pages = {}, {}
 
 local function addTab(name, index, order)
     local btn = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 34),
-        LayoutOrder = order or index,
-        BackgroundColor3 = Colors.Surface,
-        Text = name,
-        TextColor3 = Colors.TextDim,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 13,
-        AutoButtonColor = false,
-        BorderSizePixel = 0,
-        ZIndex = 2,
+        Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order or index,
+        BackgroundColor3 = Colors.Surface, Text = name, TextColor3 = Colors.TextDim,
+        Font = Enum.Font.GothamMedium, TextSize = 13, AutoButtonColor = false,
+        BorderSizePixel = 0, ZIndex = 2,
     }, sidebar)
     corner(btn, 7)
-
     local ind = create("Frame", {
-        Size = UDim2.fromOffset(3, 16),
-        Position = UDim2.new(0, 0, 0.5, -8),
-        BackgroundColor3 = Colors.Accent,
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 3,
+        Size = UDim2.fromOffset(3, 16), Position = UDim2.new(0, 0, 0.5, -8),
+        BackgroundColor3 = accent(), BorderSizePixel = 0, Visible = false, ZIndex = 3,
     }, btn)
     corner(ind, 2)
-
-    local entry = { btn = btn, ind = ind }
-    tabs[index] = entry
-    return entry
+    theme.bgs[#theme.bgs + 1] = ind
+    tabs[index] = { btn = btn, ind = ind }
 end
 
 local function selectTab(index)
@@ -785,14 +672,14 @@ pages[3] = newPage()
 pages[4] = newPage()
 pages[5] = newPage()
 
--- ---------- ABA 1: AIMBOT ----------
+-- ---------- AIMBOT ----------
 do
     local p = pages[1]
     section(p, "GERAL")
     createToggle(p, "Aimbot", Config.Aimbot, function(v) Config.Aimbot = v end, "Aimbot")
     createKeybind(p, "Tecla de mira", Config.AimKey, function(k) Config.AimKey = k end, "AimKey")
-    createToggle(p, "Mira com botão direito do mouse", Config.AimMouse, function(v) Config.AimMouse = v end, "AimMouse")
-    createToggle(p, "Modo toggle (alternar tecla)", Config.AimToggleMode, function(v) Config.AimToggleMode = v end, "AimToggleMode")
+    createToggle(p, "Mira com botão direito", Config.AimMouse, function(v) Config.AimMouse = v end, "AimMouse")
+    createToggle(p, "Modo toggle", Config.AimToggleMode, function(v) Config.AimToggleMode = v end, "AimToggleMode")
 
     section(p, "MIRA")
     createDropdown(p, "Parte alvo", { "Head", "UpperTorso", "Torso", "HumanoidRootPart" }, Config.AimPart, function(v) Config.AimPart = v end, "AimPart")
@@ -805,10 +692,10 @@ do
 
     section(p, "FILTROS")
     createToggle(p, "Team check", Config.TeamCheck, function(v) Config.TeamCheck = v end, "TeamCheck")
-    createToggle(p, "Visible check (parede)", Config.VisibleCheck, function(v) Config.VisibleCheck = v end, "VisibleCheck")
+    createToggle(p, "Visible check", Config.VisibleCheck, function(v) Config.VisibleCheck = v end, "VisibleCheck")
 end
 
--- ---------- ABA 2: VISUAIS ----------
+-- ---------- VISUAIS ----------
 do
     local p = pages[2]
     section(p, "ESP")
@@ -821,12 +708,13 @@ do
     createSlider(p, "Distância máxima", 100, 3000, Config.ESPMaxDistance, "m", function(v) Config.ESPMaxDistance = v end, "ESPMaxDistance")
 end
 
--- ---------- ABA 3: MOVIMENTO + COMBAT ----------
+-- ---------- MOVIMENTO ----------
 do
     local p = pages[3]
     section(p, "EXTENDED HITBOX")
     createToggle(p, "Hitbox expandida", Config.Hitbox, function(v) Config.Hitbox = v end, "Hitbox")
-    createSlider(p, "Tamanho", 4, 18, Config.HitboxSize, "", function(v) Config.HitboxSize = v end, "HitboxSize")
+    createSlider(p, "Tamanho", 4, 100, Config.HitboxSize, "", function(v) Config.HitboxSize = v end, "HitboxSize")
+    createSlider(p, "Distância da hitbox", 50, 800, Config.HitboxMaxDistance, "m", function(v) Config.HitboxMaxDistance = v end, "HitboxMaxDistance")
     createToggle(p, "Aplicar em mim", Config.HitboxLocal, function(v) Config.HitboxLocal = v end, "HitboxLocal")
     createToggle(p, "Incluir NPCs", Config.HitboxNPCs, function(v) Config.HitboxNPCs = v end, "HitboxNPCs")
     createToggle(p, "Mostrar cubo (visual)", Config.HitboxVisual, function(v) Config.HitboxVisual = v end, "HitboxVisual")
@@ -841,18 +729,15 @@ do
 
     section(p, "INFO")
     create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 74),
-        BackgroundColor3 = Colors.Surface,
+        Size = UDim2.new(1, 0, 0, 62), BackgroundColor3 = Colors.Surface,
         BackgroundTransparency = 0.3,
-        Text = "Fast attack cobre M1 de estilos, espadas e frutas.\nCooldown 0 é ótimo p/ grind em NPC; em PvP use 0.1-0.2.\nO servidor valida ritmo/dano — valores exagerados podem ser ignorados.",
-        TextColor3 = Colors.TextDim,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 11,
-        TextWrapped = true,
+        Text = "Hitbox otimizada: só aplica em alvos dentro da distância configurada.\nAcima de ~30 em players pode gerar correção do servidor. NPCs aceitam valores altos.",
+        TextColor3 = Colors.TextDim, Font = Enum.Font.GothamMedium,
+        TextSize = 11, TextWrapped = true,
     }, p)
 end
 
--- ---------- ABA 5: SPEED ----------
+-- ---------- SPEED ----------
 do
     local p = pages[5]
     section(p, "SPEED")
@@ -860,25 +745,32 @@ do
     createSlider(p, "Velocidade", 16, 300, Config.SpeedValue, "", function(v) Config.SpeedValue = v end, "SpeedValue")
     createToggle(p, "Só correr com a tecla", Config.SpeedHold, function(v) Config.SpeedHold = v end, "SpeedHold")
     createKeybind(p, "Tecla de corrida", Config.SpeedKey, function(k) Config.SpeedKey = k end, "SpeedKey")
-
-    section(p, "INFO")
-    create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 46),
-        BackgroundColor3 = Colors.Surface,
-        BackgroundTransparency = 0.3,
-        Text = "Mantém o WalkSpeed no valor escolhido.\nAlguns jogos anti-cheat detectam valores muito altos.",
-        TextColor3 = Colors.TextDim,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 11,
-        TextWrapped = true,
-    }, p)
 end
 
--- ---------- ABA 4: CONFIG ----------
+-- ---------- CONFIG (com cores) ----------
 do
     local p = pages[4]
     section(p, "INTERFACE")
     createKeybind(p, "Abrir / fechar menu", Config.UIToggleKey, function(k) Config.UIToggleKey = k end, "UIToggleKey")
+
+    section(p, "CORES")
+    createDropdown(p, "Cor do painel", PresetNames, Config.PanelColor, function(v)
+        Config.PanelColor = v
+        applyTheme()
+        notify("Painel: " .. v)
+    end, "PanelColor")
+    createDropdown(p, "Cor da hitbox", PresetNames, Config.HitboxColor, function(v)
+        Config.HitboxColor = v
+        notify("Hitbox: " .. v)
+    end, "HitboxColor")
+    createDropdown(p, "ESP inimigo", PresetNames, Config.ESPEnemyColor, function(v)
+        Config.ESPEnemyColor = v
+        notify("ESP inimigo: " .. v)
+    end, "ESPEnemyColor")
+    createDropdown(p, "ESP aliado", PresetNames, Config.ESPAllyColor, function(v)
+        Config.ESPAllyColor = v
+        notify("ESP aliado: " .. v)
+    end, "ESPAllyColor")
 
     section(p, "CONFIGURAÇÃO")
     createButton(p, "Salvar config", function()
@@ -888,9 +780,9 @@ do
         end
         if writefile then
             writefile("UnknownHub_Config.json", HttpService:JSONEncode(data))
-            notify("Config salva com sucesso")
+            notify("Config salva")
         else
-            notify("Executor sem suporte a writefile")
+            notify("Executor sem writefile")
         end
     end)
     createButton(p, "Carregar config", function()
@@ -918,37 +810,38 @@ do
         for k, ref in pairs(Refs) do
             if Config[k] ~= nil and ref.Set then ref.Set(Config[k], false) end
         end
+        applyTheme()
         notify("Config carregada")
     end)
     createButton(p, "Resetar config", function()
         Config.Aimbot = true
         Config.ESP = true
         Config.FOV = 160
-        Config.Smoothness = 9
         Config.Hitbox = false
+        Config.HitboxSize = 25
         Config.HitboxNPCs = true
         Config.HitboxVisual = true
         Config.FastAttack = false
         Config.Noclip = false
         Config.Speed = false
-        Config.SpeedValue = 60
+        Config.PanelColor = "Roxo"
+        Config.HitboxColor = "Roxo"
+        Config.ESPEnemyColor = "Vermelho"
+        Config.ESPAllyColor = "Ciano"
         for k, ref in pairs(Refs) do
             if Config[k] ~= nil and ref.Set then ref.Set(Config[k], false) end
         end
+        applyTheme()
         notify("Config resetada")
     end)
 
     section(p, "ATALHOS")
     create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 66),
-        BackgroundColor3 = Colors.Surface,
+        Size = UDim2.new(1, 0, 0, 66), BackgroundColor3 = Colors.Surface,
         BackgroundTransparency = 0.3,
-        Text = "K  →  abrir / fechar menu\nE  →  segurar para mirar (teclado)\nBotão direito do mouse  →  segurar para mirar\nLeftAlt  →  correr (se 'só correr com a tecla' estiver on)\nMouse  →  arrastar o menu pela barra superior",
-        TextColor3 = Colors.TextDim,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 11,
-        TextWrapped = true,
-        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "K  →  abrir / fechar menu\nE  →  segurar para mirar\nBotão direito do mouse  →  mirar\nLeftAlt  →  correr (modo tecla)\nMouse  →  arrastar pela barra superior",
+        TextColor3 = Colors.TextDim, Font = Enum.Font.GothamMedium,
+        TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
     }, p)
 end
 
@@ -962,11 +855,10 @@ for index, entry in pairs(tabs) do
     local i = index
     entry.btn.MouseButton1Click:Connect(function() selectTab(i) end)
 end
-
 selectTab(1)
 
 --=====================================================================
--- JANELA: DRAG / MINIMIZAR / FECHAR
+-- JANELA
 --=====================================================================
 local dragging, dragStart, startPos = false, nil, nil
 
@@ -1007,7 +899,7 @@ end)
 minBtn.MouseButton1Click:Connect(toggleUI)
 
 --=====================================================================
--- AIMBOT (LÓGICA)
+-- AIMBOT
 --=====================================================================
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -1063,23 +955,25 @@ local function aimAt(part, dt)
     Camera.CFrame = Camera.CFrame:Lerp(goal, alpha)
 end
 
--- círculo do FOV
 local fovCircle, fovDot
 if Drawing then
     fovCircle = Drawing.new("Circle")
     fovCircle.Thickness = 1.5
     fovCircle.NumSides = 90
     fovCircle.Filled = false
-    fovCircle.Color = Colors.Accent
     fovCircle.Transparency = 0.75
     fovCircle.Visible = false
 
     fovDot = Drawing.new("Circle")
     fovDot.Radius = 2
     fovDot.Filled = true
-    fovDot.Color = Colors.Accent
     fovDot.Transparency = 0.8
     fovDot.Visible = false
+
+    onTheme(function()
+        if fovCircle then fovCircle.Color = accent() end
+        if fovDot then fovDot.Color = accent() end
+    end)
 end
 
 --=====================================================================
@@ -1172,7 +1066,7 @@ local function updateChams(plr, char, enemy)
             h.Parent = char
             hlCache[plr] = h
         end
-        local c = enemy and Color3.fromRGB(255, 80, 100) or Color3.fromRGB(90, 220, 255)
+        local c = enemy and espEnemy() or espAlly()
         h.FillColor = c
         h.OutlineColor = c
     elseif h then
@@ -1183,7 +1077,6 @@ end
 
 local function updateESP()
     local camPos = Camera.CFrame.Position
-
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LP then continue end
         local o = espCache[plr]
@@ -1200,10 +1093,8 @@ local function updateESP()
             local dist = (camPos - root.Position).Magnitude
             if dist <= Config.ESPMaxDistance then
                 local topOff, botOff = getOffsets(char)
-                local topPoint = root.Position + Vector3.new(0, topOff, 0)
-                local botPoint = root.Position + Vector3.new(0, botOff, 0)
-                local sTop, on1 = Camera:WorldToViewportPoint(topPoint)
-                local sBot, on2 = Camera:WorldToViewportPoint(botPoint)
+                local sTop, on1 = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, topOff, 0))
+                local sBot, on2 = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, botOff, 0))
 
                 if on1 and on2 and sTop.Z > 0 then
                     local h = math.abs(sBot.Y - sTop.Y)
@@ -1211,7 +1102,7 @@ local function updateESP()
                     local x = sTop.X - w / 2
                     local y = sTop.Y
                     local enemy = isEnemy(plr)
-                    local outline = enemy and Color3.fromRGB(255, 80, 100) or Color3.fromRGB(90, 220, 255)
+                    local outline = enemy and espEnemy() or espAlly()
 
                     o.box.Visible = Config.ESPBox
                     o.box.Color = outline
@@ -1259,17 +1150,28 @@ local function updateESP()
 end
 
 --=====================================================================
--- EXTENDED HITBOX (players + NPCs) + CUBO VISUAL
+-- HITBOX OTIMIZADA
 --=====================================================================
 local hitboxCache = {}
 local visualCache = {}
 local playerCharSet = setmetatable({}, { __mode = "k" })
 local npcList = {}
 local npcScanTimer = 0
-local NPC_SCAN_INTERVAL = 1.0
-local NPC_MAX_DISTANCE = 500
+local NPC_SCAN_INTERVAL = 2.0
+local sizeVecCache = {}
 
-local HITBOX_COLOR = Color3.fromRGB(122, 92, 255)
+local overlapParams = OverlapParams.new()
+overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+overlapParams.MaxParts = 250
+
+local function getSizedVector(s)
+    local v = sizeVecCache[s]
+    if not v then
+        v = Vector3.new(s, s, s)
+        sizeVecCache[s] = v
+    end
+    return v
+end
 
 local function getRoot(char)
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -1277,9 +1179,9 @@ local function getRoot(char)
     return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
 end
 
-local function getVisual(model, hrp)
+local function getVisual(model)
     local v = visualCache[model]
-    if not v or v.Parent == nil then
+    if not v or not v.Parent then
         v = Instance.new("Part")
         v.Name = "UH_HitboxVisual"
         v.Anchored = true
@@ -1288,8 +1190,8 @@ local function getVisual(model, hrp)
         v.CanTouch = false
         v.CastShadow = false
         v.Material = Enum.Material.Neon
-        v.Color = HITBOX_COLOR
         v.Transparency = 0.6
+        v.Size = Vector3.new(1, 1, 1)
         v.Parent = Workspace
         visualCache[model] = v
     end
@@ -1304,9 +1206,10 @@ local function hideVisual(model)
     end
 end
 
-local function applyHitbox(char, size)
+-- aplica hitbox escrevendo só o que mudou (menos propriedades por frame)
+local function applyHitbox(char, size, rootPos)
     local hrp = getRoot(char)
-    if not hrp or not hrp:IsA("BasePart") then return end
+    if not hrp then return end
 
     local cached = hitboxCache[char]
     if not cached or cached.part ~= hrp then
@@ -1316,17 +1219,24 @@ local function applyHitbox(char, size)
             transparency = hrp.Transparency,
             canCollide = hrp.CanCollide,
         }
-        cached = hitboxCache[char]
     end
 
-    hrp.Size = Vector3.new(size, size, size)
-    hrp.CanCollide = false
-    hrp.Transparency = 1
+    local target = getSizedVector(size)
+    if hrp.Size ~= target then hrp.Size = target end
+    if hrp.CanCollide then hrp.CanCollide = false end
+    if hrp.Transparency ~= 1 then hrp.Transparency = 1 end
 
     if Config.HitboxVisual then
-        local v = getVisual(char, hrp)
-        v.Size = Vector3.new(size, size, size)
+        local v = getVisual(char)
+        if v.Size ~= target then
+            v.Size = target
+            v.Color = hbColor()
+        else
+            v.Color = hbColor()
+        end
         v.CFrame = hrp.CFrame
+    elseif visualCache[char] then
+        hideVisual(char)
     end
 end
 
@@ -1343,31 +1253,35 @@ local function restoreHitbox(char)
     hideVisual(char)
 end
 
+-- scan rápido por bounding box (não varre o Workspace inteiro)
 local function scanNPCs()
-    local myChar = LP.Character
-    local myPos = myChar and myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
-    local newNPCs = {}
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        npcList = {}
+        return
+    end
 
-    for _, model in ipairs(Workspace:GetDescendants()) do
-        if model:IsA("Model") and not playerCharSet[model] then
+    overlapParams.FilterDescendantsInstances = { char }
+    local r = Config.HitboxMaxDistance
+    local parts = Workspace:GetPartBoundsInBox(
+        CFrame.new(root.Position),
+        Vector3.new(r * 2, 300, r * 2),
+        overlapParams
+    )
+
+    local seen, list = {}, {}
+    for _, part in ipairs(parts) do
+        local model = part:FindFirstAncestorOfClass("Model")
+        if model and not seen[model] and not playerCharSet[model] then
             local hum = model:FindFirstChildOfClass("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = getRoot(model)
-                if hrp then
-                    local ok = true
-                    if myPos then
-                        local d = (hrp.Position - myPos).Magnitude
-                        if d > NPC_MAX_DISTANCE then ok = false end
-                    end
-                    if ok then
-                        newNPCs[#newNPCs + 1] = model
-                    end
-                end
+                seen[model] = true
+                list[#list + 1] = model
             end
         end
     end
-
-    npcList = newNPCs
+    npcList = list
 end
 
 local function refreshPlayerChars()
@@ -1378,61 +1292,41 @@ local function refreshPlayerChars()
     playerCharSet = set
 end
 
---=====================================================================
--- NOCLIP
---=====================================================================
-local noclipCache = setmetatable({}, { __mode = "k" })
-
-local function noclipStep()
-    local char = LP.Character
-    if Config.Noclip and char then
-        for _, d in ipairs(char:GetDescendants()) do
-            if d:IsA("BasePart") and d.CanCollide then
-                d.CanCollide = false
-                noclipCache[d] = true
-            end
-        end
-    else
-        for part in pairs(noclipCache) do
-            if part and part.Parent then
-                pcall(function() part.CanCollide = true end)
-            end
-            noclipCache[part] = nil
-        end
-    end
-end
-
-conns[#conns + 1] = RunService.Stepped:Connect(function()
-    noclipStep()
-end)
-
---=====================================================================
--- HITBOX LOOP (Heartbeat, todo frame)
---=====================================================================
 conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
     if not Config.Hitbox then
-        for char in pairs(hitboxCache) do
-            restoreHitbox(char)
+        if next(hitboxCache) then
+            for char in pairs(hitboxCache) do restoreHitbox(char) end
         end
-        for model in pairs(visualCache) do
-            hideVisual(model)
+        if next(visualCache) then
+            for model in pairs(visualCache) do hideVisual(model) end
         end
         npcList = {}
         npcScanTimer = 0
         return
     end
 
+    local myChar = LP.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+    local myPos = myRoot.Position
+    local maxD = Config.HitboxMaxDistance
+
     refreshPlayerChars()
 
+    -- players próximos
     for _, plr in ipairs(Players:GetPlayers()) do
-        if Config.HitboxLocal or plr ~= LP then
-            local alive, char, hum = getChar(plr)
+        if plr ~= LP or Config.HitboxLocal then
+            local alive, char = getChar(plr)
             if alive then
-                pcall(applyHitbox, char, Config.HitboxSize)
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root and (root.Position - myPos).Magnitude <= maxD then
+                    pcall(applyHitbox, char, Config.HitboxSize, root.Position)
+                end
             end
         end
     end
 
+    -- NPCs: rescan cada 2s + aplicação nos já encontrados
     if Config.HitboxNPCs then
         npcScanTimer = npcScanTimer + dt
         if npcScanTimer >= NPC_SCAN_INTERVAL then
@@ -1447,28 +1341,30 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
                 end
             end
         end
+    elseif next(npcList) then
+        npcList = {}
     end
 
-    for char in pairs(hitboxCache) do
-        if not char.Parent then
-            hitboxCache[char] = nil
-            hideVisual(char)
+    -- limpeza preguiçosa (só quando necessário)
+    if next(hitboxCache) then
+        for char in pairs(hitboxCache) do
+            if not char.Parent then
+                hitboxCache[char] = nil
+                hideVisual(char)
+            end
         end
     end
-
-    for model in pairs(visualCache) do
-        if not hitboxCache[model] then
-            hideVisual(model)
+    if next(visualCache) then
+        for model in pairs(visualCache) do
+            if not hitboxCache[model] then hideVisual(model) end
         end
     end
 end)
 
 --=====================================================================
--- COMBAT FRAMEWORK (Blox Fruits: fast attack estilos/espadas/frutas)
+-- COMBAT FRAMEWORK
 --=====================================================================
-local combatCtrl = nil      -- controller principal de combate (M1)
-local combatFound = false
-local combatRetry = 0
+local combatCtrl, combatFound, combatRetry = nil, false, 0
 
 local COMBAT_COOLDOWN_KEYS = { "attackCooldown", "coolDown", "cooldown", "attackCoolDown", "AttackCoolDown" }
 local COMBAT_ACTIVE_KEYS   = { "activeController", "controller", "self" }
@@ -1489,26 +1385,18 @@ end
 local function findCombatController()
     local ps = LP:FindFirstChild("PlayerScripts")
     if not ps then return nil end
-
-    local ok, mod = pcall(function()
-        return require(ps:WaitForChild("CombatFramework", 5))
-    end)
+    local folder = ps:FindFirstChild("CombatFramework")
+    if not folder then return nil end
+    local ok, mod = pcall(require, folder)
     if not ok or type(mod) ~= "table" then return nil end
 
-    -- caminho 1: controller direto nas upvalues do módulo
-    local gotUVs = false
-    local funcs = { debug.getupvalues, getupvalues }
-    for _, getUV in ipairs(funcs) do
+    for _, getUV in ipairs({ debug.getupvalues, getupvalues }) do
         if getUV then
             local okUV, upvals = pcall(getUV, mod)
             if okUV and type(upvals) == "table" then
-                gotUVs = true
                 for _, v in pairs(upvals) do
-                    if type(v) == "table" and looksLikeCombatController(v) then
-                        return v
-                    end
                     if type(v) == "table" then
-                        -- pode estar aninhado (ex: v.controller)
+                        if looksLikeCombatController(v) then return v end
                         for _, key in ipairs(COMBAT_ACTIVE_KEYS) do
                             local inner = v[key]
                             if type(inner) == "table" and looksLikeCombatController(inner) then
@@ -1520,26 +1408,16 @@ local function findCombatController()
             end
         end
     end
-
-    -- caminho 2: campos diretos do módulo
-    if type(mod.activeController) == "table" then
-        return mod.activeController
-    end
-
-    if not gotUVs then
-        return nil
-    end
+    if type(mod.activeController) == "table" then return mod.activeController end
     return nil
 end
 
-local function combatStep(dt)
+conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
     if not Config.FastAttack then
-        combatCtrl = nil
-        combatFound = false
+        combatCtrl, combatFound = nil, false
         return
     end
 
-    -- (re)encontra o controller; retry a cada 2s se falhar (jogo pode carregar depois)
     if not combatFound then
         combatRetry = combatRetry + dt
         if combatRetry >= 2 then
@@ -1553,32 +1431,44 @@ local function combatStep(dt)
     pcall(function()
         local ctrl = combatCtrl
         if not ctrl then return end
-
-        -- cooldown do M1 (estilos de luta / espadas / frutas usam o mesmo canal)
         for _, key in ipairs(COMBAT_COOLDOWN_KEYS) do
             if ctrl[key] ~= nil and ctrl[key] ~= Config.FastCooldown then
                 ctrl[key] = Config.FastCooldown
             end
         end
-
-        -- hitbox do golpe
         if Config.CombatHitbox > 0 and ctrl.hitboxMagnitude ~= nil then
             ctrl.hitboxMagnitude = Config.CombatHitbox
         end
-
-        -- alguns builds expõem cooldown no time do dataController
-        if ctrl.data and type(ctrl.data) == "table" then
+        if type(ctrl.data) == "table" then
             for _, key in ipairs(COMBAT_COOLDOWN_KEYS) do
-                if ctrl.data[key] ~= nil then
-                    ctrl.data[key] = Config.FastCooldown
-                end
+                if ctrl.data[key] ~= nil then ctrl.data[key] = Config.FastCooldown end
             end
         end
     end)
-end
+end)
 
-conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
-    pcall(combatStep, dt)
+--=====================================================================
+-- NOCLIP
+--=====================================================================
+local noclipCache = setmetatable({}, { __mode = "k" })
+
+conns[#conns + 1] = RunService.Stepped:Connect(function()
+    local char = LP.Character
+    if Config.Noclip and char then
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") and d.CanCollide then
+                d.CanCollide = false
+                noclipCache[d] = true
+            end
+        end
+    elseif next(noclipCache) then
+        for part in pairs(noclipCache) do
+            if part and part.Parent then
+                pcall(function() part.CanCollide = true end)
+            end
+            noclipCache[part] = nil
+        end
+    end
 end)
 
 --=====================================================================
@@ -1598,19 +1488,14 @@ local function speedStep()
         speedOrig, speedHumanoid, speedActive = nil, nil, false
         return
     end
-
     if hum ~= speedHumanoid then
         speedHumanoid = hum
         speedOrig = hum.WalkSpeed
         speedActive = false
     end
-
     local active = Config.Speed and (not Config.SpeedHold or State.speedKeyDown)
-
     if active then
-        if hum.WalkSpeed ~= Config.SpeedValue then
-            hum.WalkSpeed = Config.SpeedValue
-        end
+        if hum.WalkSpeed ~= Config.SpeedValue then hum.WalkSpeed = Config.SpeedValue end
         speedActive = true
     elseif speedActive then
         hum.WalkSpeed = speedOrig or 16
@@ -1627,7 +1512,6 @@ end)
 --=====================================================================
 conns[#conns + 1] = UIS.InputBegan:Connect(function(input, gpe)
     if State.listeningKey then return end
-
     if input.KeyCode == Config.AimKey then
         if Config.AimToggleMode then
             State.aimToggled = not State.aimToggled
@@ -1635,36 +1519,25 @@ conns[#conns + 1] = UIS.InputBegan:Connect(function(input, gpe)
             State.keyDown = true
         end
     end
-
     if Config.AimMouse and input.UserInputType == Enum.UserInputType.MouseButton2 then
         State.mouseDown = true
     end
-
     if input.KeyCode == Config.SpeedKey then
         State.speedKeyDown = true
     end
-
     if input.KeyCode == Config.UIToggleKey and not gpe then
         toggleUI()
     end
 end)
 
 conns[#conns + 1] = UIS.InputEnded:Connect(function(input)
-    if input.KeyCode == Config.AimKey then
-        State.keyDown = false
-    end
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        State.mouseDown = false
-    end
-    if input.KeyCode == Config.SpeedKey then
-        State.speedKeyDown = false
-    end
+    if input.KeyCode == Config.AimKey then State.keyDown = false end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then State.mouseDown = false end
+    if input.KeyCode == Config.SpeedKey then State.speedKeyDown = false end
 end)
 
 conns[#conns + 1] = Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    if Workspace.CurrentCamera then
-        Camera = Workspace.CurrentCamera
-    end
+    if Workspace.CurrentCamera then Camera = Workspace.CurrentCamera end
 end)
 
 --=====================================================================
@@ -1688,32 +1561,28 @@ conns[#conns + 1] = RunService.RenderStepped:Connect(function(dt)
             fovCircle.Position = center
             fovCircle.Radius = Config.FOV
             fovDot.Position = center
+            fovCircle.Color = accent()
+            fovDot.Color = accent()
         end
     end
 
-    if Drawing then
-        pcall(updateESP)
-    end
-
+    if Drawing then pcall(updateESP) end
     speedStep()
 
     if isAiming() then
         local target = findTarget()
-        if target then
-            aimAt(target, dt)
-        end
+        if target then aimAt(target, dt) end
     end
 end)
 
+applyTheme()
+
 --=====================================================================
--- LIMPEZA / SHUTDOWN
+-- CLEANUP
 --=====================================================================
 getgenv().UnknownHub_Cleanup = function()
     getgenv().UnknownHub_Alive = false
-
-    for _, c in ipairs(conns) do
-        pcall(function() c:Disconnect() end)
-    end
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     conns = {}
 
     for _, o in pairs(espCache) do
@@ -1724,25 +1593,17 @@ getgenv().UnknownHub_Cleanup = function()
     end
     espCache = {}
 
-    for _, h in pairs(hlCache) do
-        pcall(function() h:Destroy() end)
-    end
+    for _, h in pairs(hlCache) do pcall(function() h:Destroy() end) end
     hlCache = {}
 
-    for model in pairs(visualCache) do
-        pcall(hideVisual, model)
-    end
+    for model in pairs(visualCache) do pcall(hideVisual, model) end
     visualCache = {}
 
-    for char in pairs(hitboxCache) do
-        pcall(restoreHitbox, char)
-    end
+    for char in pairs(hitboxCache) do pcall(restoreHitbox, char) end
     hitboxCache = {}
 
     for part in pairs(noclipCache) do
-        if part and part.Parent then
-            pcall(function() part.CanCollide = true end)
-        end
+        if part and part.Parent then pcall(function() part.CanCollide = true end) end
     end
     noclipCache = {}
 
@@ -1751,12 +1612,10 @@ getgenv().UnknownHub_Cleanup = function()
         if hum and speedOrig then hum.WalkSpeed = speedOrig end
     end)
 
-    combatCtrl = nil
-    combatFound = false
+    combatCtrl, combatFound = nil, false
 
     pcall(function() if fovCircle then fovCircle:Remove() end end)
     pcall(function() if fovDot then fovDot:Remove() end end)
-
     pcall(function() gui:Destroy() end)
 end
 
@@ -1765,9 +1624,7 @@ end
 --=====================================================================
 task.spawn(function()
     task.wait(0.3)
-    notify("Unknown Hub v1.4 carregado")
+    notify("Unknown Hub v1.5 carregado")
     task.wait(0.15)
-    notify("K abre/fecha o menu")
-    task.wait(0.15)
-    notify("Fast attack: aba Movimento")
+    notify("K abre/fecha • hitbox até 100")
 end)
