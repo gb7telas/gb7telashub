@@ -1,7 +1,8 @@
 --[[
-    Unknown Hub  |  v1.3  |  Universal Roblox Script
+    Unknown Hub  |  v1.4  |  Universal Roblox Script (Blox Fruits ready)
     Features: Aimbot (tecla + botão direito), FOV Circle, ESP,
-              Extended Hitbox (players + NPCs) com cubo visual, Speed, Noclip
+              Extended Hitbox (players + NPCs) com cubo visual,
+              Fast Attack (estilos/espadas/frutas), Speed, Noclip
     Execução: cole no executor (ou autoexec). Interface: K abre/fecha.
 ]]--
 
@@ -63,6 +64,11 @@ local Config = {
     HitboxLocal  = false,
     HitboxNPCs   = true,
     HitboxVisual = true,
+
+    -- Combat (Blox Fruits)
+    FastAttack    = false,
+    FastCooldown  = 0,
+    CombatHitbox  = 0,
 
     -- Speed
     Speed       = false,
@@ -159,8 +165,8 @@ local gui = create("ScreenGui", {
 
 local main = create("Frame", {
     Name = "Main",
-    Size = UDim2.fromOffset(520, 360),
-    Position = UDim2.new(0.5, -260, 0.5, -180),
+    Size = UDim2.fromOffset(520, 380),
+    Position = UDim2.new(0.5, -260, 0.5, -190),
     BackgroundColor3 = Colors.Background,
     BorderSizePixel = 0,
 }, gui)
@@ -219,7 +225,7 @@ create("TextLabel", {
     Size = UDim2.fromOffset(160, 12),
     Position = UDim2.fromOffset(46, 24),
     BackgroundTransparency = 1,
-    Text = "v1.3  •  universal",
+    Text = "v1.4  •  Blox Fruits ready",
     TextColor3 = Colors.TextDim,
     Font = Enum.Font.GothamMedium,
     TextSize = 10,
@@ -815,7 +821,7 @@ do
     createSlider(p, "Distância máxima", 100, 3000, Config.ESPMaxDistance, "m", function(v) Config.ESPMaxDistance = v end, "ESPMaxDistance")
 end
 
--- ---------- ABA 3: MOVIMENTO ----------
+-- ---------- ABA 3: MOVIMENTO + COMBAT ----------
 do
     local p = pages[3]
     section(p, "EXTENDED HITBOX")
@@ -828,12 +834,17 @@ do
     section(p, "NOCLIP")
     createToggle(p, "Atravessar paredes", Config.Noclip, function(v) Config.Noclip = v end, "Noclip")
 
+    section(p, "COMBAT (Blox Fruits)")
+    createToggle(p, "Fast attack (sem delay)", Config.FastAttack, function(v) Config.FastAttack = v end, "FastAttack")
+    createSlider(p, "Cooldown do ataque", 0, 1, Config.FastCooldown, "s", function(v) Config.FastCooldown = v end, "FastCooldown")
+    createSlider(p, "Hitbox do golpe", 0, 100, Config.CombatHitbox, "", function(v) Config.CombatHitbox = v end, "CombatHitbox")
+
     section(p, "INFO")
     create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 60),
+        Size = UDim2.new(1, 0, 0, 74),
         BackgroundColor3 = Colors.Surface,
         BackgroundTransparency = 0.3,
-        Text = "Hitbox: Size + CanCollide reaplicados todo frame, sem Massless.\nNPCs próximos (raio 500 studs) também recebem hitbox.\nO cubo neon é só visual — o hit real é o HRP expandido (invisível).",
+        Text = "Fast attack cobre M1 de estilos, espadas e frutas.\nCooldown 0 é ótimo p/ grind em NPC; em PvP use 0.1-0.2.\nO servidor valida ritmo/dano — valores exagerados podem ser ignorados.",
         TextColor3 = Colors.TextDim,
         Font = Enum.Font.GothamMedium,
         TextSize = 11,
@@ -917,6 +928,7 @@ do
         Config.Hitbox = false
         Config.HitboxNPCs = true
         Config.HitboxVisual = true
+        Config.FastAttack = false
         Config.Noclip = false
         Config.Speed = false
         Config.SpeedValue = 60
@@ -1248,10 +1260,9 @@ end
 
 --=====================================================================
 -- EXTENDED HITBOX (players + NPCs) + CUBO VISUAL
--- Size + CanCollide reaplicados todo frame, SEM Massless
 --=====================================================================
 local hitboxCache = {}
-local visualCache = {}         -- [model] = cubo visual
+local visualCache = {}
 local playerCharSet = setmetatable({}, { __mode = "k" })
 local npcList = {}
 local npcScanTimer = 0
@@ -1266,7 +1277,6 @@ local function getRoot(char)
     return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
 end
 
--- cubo visual (part local, só no seu client)
 local function getVisual(model, hrp)
     local v = visualCache[model]
     if not v or v.Parent == nil then
@@ -1309,12 +1319,10 @@ local function applyHitbox(char, size)
         cached = hitboxCache[char]
     end
 
-    -- hit real: expande o HRP (invisível)
     hrp.Size = Vector3.new(size, size, size)
     hrp.CanCollide = false
     hrp.Transparency = 1
 
-    -- visual: cubo neon centralizado no alvo
     if Config.HitboxVisual then
         local v = getVisual(char, hrp)
         v.Size = Vector3.new(size, size, size)
@@ -1335,7 +1343,6 @@ local function restoreHitbox(char)
     hideVisual(char)
 end
 
--- procura NPCs: models com Humanoid que não são de players
 local function scanNPCs()
     local myChar = LP.Character
     local myPos = myChar and myChar:FindFirstChild("HumanoidRootPart") and myChar.HumanoidRootPart.Position
@@ -1363,7 +1370,6 @@ local function scanNPCs()
     npcList = newNPCs
 end
 
--- mantém mapa char -> é player (p/ diferenciar NPCs no scan)
 local function refreshPlayerChars()
     local set = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -1418,7 +1424,6 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
 
     refreshPlayerChars()
 
-    -- players
     for _, plr in ipairs(Players:GetPlayers()) do
         if Config.HitboxLocal or plr ~= LP then
             local alive, char, hum = getChar(plr)
@@ -1428,7 +1433,6 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- NPCs (rescan periódico, aplicação todo frame)
     if Config.HitboxNPCs then
         npcScanTimer = npcScanTimer + dt
         if npcScanTimer >= NPC_SCAN_INTERVAL then
@@ -1445,7 +1449,6 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- limpa caches de modelos removidos
     for char in pairs(hitboxCache) do
         if not char.Parent then
             hitboxCache[char] = nil
@@ -1453,12 +1456,129 @@ conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- remove cubos de modelos que sumiram
     for model in pairs(visualCache) do
         if not hitboxCache[model] then
             hideVisual(model)
         end
     end
+end)
+
+--=====================================================================
+-- COMBAT FRAMEWORK (Blox Fruits: fast attack estilos/espadas/frutas)
+--=====================================================================
+local combatCtrl = nil      -- controller principal de combate (M1)
+local combatFound = false
+local combatRetry = 0
+
+local COMBAT_COOLDOWN_KEYS = { "attackCooldown", "coolDown", "cooldown", "attackCoolDown", "AttackCoolDown" }
+local COMBAT_ACTIVE_KEYS   = { "activeController", "controller", "self" }
+
+local function tableSignature(t)
+    local keys = {}
+    for k in pairs(t) do keys[#keys + 1] = tostring(k) end
+    table.sort(keys)
+    return table.concat(keys, ","):lower()
+end
+
+local function looksLikeCombatController(t)
+    local sig = tableSignature(t)
+    return sig:find("attack") ~= nil or sig:find("hitbox") ~= nil
+        or sig:find("combat") ~= nil or sig:find("weapon") ~= nil
+end
+
+local function findCombatController()
+    local ps = LP:FindFirstChild("PlayerScripts")
+    if not ps then return nil end
+
+    local ok, mod = pcall(function()
+        return require(ps:WaitForChild("CombatFramework", 5))
+    end)
+    if not ok or type(mod) ~= "table" then return nil end
+
+    -- caminho 1: controller direto nas upvalues do módulo
+    local gotUVs = false
+    local funcs = { debug.getupvalues, getupvalues }
+    for _, getUV in ipairs(funcs) do
+        if getUV then
+            local okUV, upvals = pcall(getUV, mod)
+            if okUV and type(upvals) == "table" then
+                gotUVs = true
+                for _, v in pairs(upvals) do
+                    if type(v) == "table" and looksLikeCombatController(v) then
+                        return v
+                    end
+                    if type(v) == "table" then
+                        -- pode estar aninhado (ex: v.controller)
+                        for _, key in ipairs(COMBAT_ACTIVE_KEYS) do
+                            local inner = v[key]
+                            if type(inner) == "table" and looksLikeCombatController(inner) then
+                                return inner
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- caminho 2: campos diretos do módulo
+    if type(mod.activeController) == "table" then
+        return mod.activeController
+    end
+
+    if not gotUVs then
+        return nil
+    end
+    return nil
+end
+
+local function combatStep(dt)
+    if not Config.FastAttack then
+        combatCtrl = nil
+        combatFound = false
+        return
+    end
+
+    -- (re)encontra o controller; retry a cada 2s se falhar (jogo pode carregar depois)
+    if not combatFound then
+        combatRetry = combatRetry + dt
+        if combatRetry >= 2 then
+            combatRetry = 0
+            combatCtrl = findCombatController()
+            combatFound = combatCtrl ~= nil
+        end
+        if not combatCtrl then return end
+    end
+
+    pcall(function()
+        local ctrl = combatCtrl
+        if not ctrl then return end
+
+        -- cooldown do M1 (estilos de luta / espadas / frutas usam o mesmo canal)
+        for _, key in ipairs(COMBAT_COOLDOWN_KEYS) do
+            if ctrl[key] ~= nil and ctrl[key] ~= Config.FastCooldown then
+                ctrl[key] = Config.FastCooldown
+            end
+        end
+
+        -- hitbox do golpe
+        if Config.CombatHitbox > 0 and ctrl.hitboxMagnitude ~= nil then
+            ctrl.hitboxMagnitude = Config.CombatHitbox
+        end
+
+        -- alguns builds expõem cooldown no time do dataController
+        if ctrl.data and type(ctrl.data) == "table" then
+            for _, key in ipairs(COMBAT_COOLDOWN_KEYS) do
+                if ctrl.data[key] ~= nil then
+                    ctrl.data[key] = Config.FastCooldown
+                end
+            end
+        end
+    end)
+end
+
+conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
+    pcall(combatStep, dt)
 end)
 
 --=====================================================================
@@ -1559,7 +1679,6 @@ local function isAiming()
 end
 
 conns[#conns + 1] = RunService.RenderStepped:Connect(function(dt)
-    -- círculo do FOV
     if fovCircle then
         local show = Config.Aimbot and Config.ShowFOV
         fovCircle.Visible = show
@@ -1572,15 +1691,12 @@ conns[#conns + 1] = RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    -- ESP
     if Drawing then
         pcall(updateESP)
     end
 
-    -- Speed
     speedStep()
 
-    -- Aimbot
     if isAiming() then
         local target = findTarget()
         if target then
@@ -1635,6 +1751,9 @@ getgenv().UnknownHub_Cleanup = function()
         if hum and speedOrig then hum.WalkSpeed = speedOrig end
     end)
 
+    combatCtrl = nil
+    combatFound = false
+
     pcall(function() if fovCircle then fovCircle:Remove() end end)
     pcall(function() if fovDot then fovDot:Remove() end end)
 
@@ -1646,9 +1765,9 @@ end
 --=====================================================================
 task.spawn(function()
     task.wait(0.3)
-    notify("Unknown Hub v1.3 carregado")
+    notify("Unknown Hub v1.4 carregado")
     task.wait(0.15)
     notify("K abre/fecha o menu")
     task.wait(0.15)
-    notify("Hitbox com cubo visual ativa")
+    notify("Fast attack: aba Movimento")
 end)
